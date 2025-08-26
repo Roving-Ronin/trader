@@ -1,28 +1,40 @@
 template:
   - sensor:
-      - name: "Max Grid Exports"
-        state: 30
+      - name: "My Max Grid Export"
+        unique_id: my_max_grid_export
+        unit_of_measurement: "kW"
+        state: "{{ states('number.sigen_plant_grid_export_limitation') }}"
+
       - name: "My Amber Buy Price Sensor"
-        state: "sensor.amber_true_five_min_price_mqtt"
+        unique_id: my_amber_buy_price_sensor
+        unit_of_measurement: "$"
+        state: "{{ states('sensor.amber_5min_current_general_price') }}"
         attributes:
-          multiplier: "1"
+          multiplier: "1"        
+
       - name: "My Amber Sell Price Sensor"
-        state: "sensor.amber_true_five_minute_export_price"  
+        unique_id: my_amber_sell_price_sensor
+        unit_of_measurement: "$"
+        state: "{{ states('sensor.amber_5min_current_feed_in_price') }}"  
         attributes:
           multiplier: "1"
 
-input_number:
+##############################################################
+
 #####################
 # Sell price triggers
 #####################
+
+input_number:
   trader_sell_price_a:
     name: Battery sell price A
     <<: &shared1
-      min: -999
-      max: 25000
-      step: 1
+      min: 0
+      max: 25
+      step: 0.01
       mode: box
-      unit_of_measurement: cents
+      unit_of_measurement: "$/kWh"
+      icon: 'mdi:currency-usd'
   
   trader_sell_price_b:
     name: Battery sell price B
@@ -59,7 +71,7 @@ input_number:
 
 
 #####################
-# Sell SOC minima
+# Sell SOC minimum price
 #####################
 
   trader_soc_sell_to_a:
@@ -70,6 +82,7 @@ input_number:
       step: 1
       mode: box
       unit_of_measurement: "%"
+      icon: 'mdi:battery-20'
 
   trader_soc_sell_to_b:
     name: Battery sell soc B
@@ -103,6 +116,7 @@ input_number:
       step: 1
       mode: box
       unit_of_measurement: kW
+      icon: 'mdi:flash'
     
   trader_export_rate_b:
     name: Battery sell rate B
@@ -125,7 +139,6 @@ input_number:
     <<: *shared3
 
 
-
 #####################
 # Sell price triggers enabled/disabled
 #####################
@@ -134,12 +147,16 @@ input_boolean:
 
   trader_sell_enabled_a:
     name: Battery sell enabled A
+
   trader_sell_enabled_b:
     name: Battery sell enabled B
+
   trader_sell_enabled_c:
     name: Battery sell enabled C
+
   trader_sell_enabled_d:
     name: Battery sell enabled D
+
   trader_sell_enabled_e:
     name: Battery sell enabled E
 
@@ -148,15 +165,21 @@ input_boolean:
 
   trader_increase_export_rate_by_solar:
     name: Increase export rate with spare solar
+
   trader_enable_auto_change_export_limit:
     name: Enable Export Limit Changes
+
   trader_enable_auto_selling_from_battery:
     name: Enable Exports
 
+
+##############################################################
+        
 binary_sensor:
   - platform: template
     sensors:
       trader_exporting_criteria_met:
+        unique_id: trader_exporting_criteria_met
         friendly_name: "Exporting Criteria Met"
         value_template: >
           {% if states('input_boolean.trader_enable_auto_selling_from_battery') and states('sensor.trader_plan_letter')  != 'z' %}
@@ -166,42 +189,51 @@ binary_sensor:
           {% endif %}
 
       trader_grid_price_negative:
+        unique_id: trader_grid_price_negative
         friendly_name: "Grid Import Price is Negative"
         value_template: >
           {% set price = states('sensor.trader_buy_price')|float %}
-          {{ price <0 }}
+          {{ price <= 0 }}
 
       trader_fit_price_negative:
+        unique_id: trader_fit_price_negative
         friendly_name: "Grid Export Price is Negative"
         value_template: >
           {% set price = states('sensor.trader_sell_price')|float %}
-          {{ price <0 }}
+          {{ price <= 0 }}
 
       trader_solar_divert_conditions_met:
+        unique_id: trader_solar_divert_conditions_met
         friendly_name: "Divert solar to grid conditions met"
         value_template: >
           {{ states('sensor.trader_sell_price')|float(0) > states('input_number.trader_solar_divert_sell_price')|float(99)
              and is_state('input_boolean.trader_divert_solar_enabled','on') and is_state('trader_fit_price_negative', 'off') }}
 
       trader_charge_from_grid_price_met:
+        unique_id: trader_charge_from_grid_price_met
         friendly_name: "Charge Battery From Grid Price Met"
         value_template: >
           {{ states('sensor.trader_buy_price')|float(999) < states('input_number.trader_charge_from_grid_price')|float(0) }}
         
       trader_use_cheap_grid_not_battery:
+        unique_id: trader_use_cheap_grid_not_battery
         friendly_name: Use Cheap Grid instead of from battery
         value_template: >
           {% set max_price = states('input_number.trader_prefer_grid_priced_under')|float(0) %}
           {% set price_now = states('sensor.trader_buy_price')|float(9999) %}
           {% set soc = states('sensor.sigen_plant_battery_state_of_charge')|int %}
           {{ price_now < max_price }}
-#          {{ price_now < max_price and now().hour > 7 and now().hour < 17 and soc <95}}
+#          {{ price_now < max_price and now().hour > 7 and now().hour < 17 and soc < 95}}
+
+##############################################################
 
 sensor:
   - platform: template
     sensors:
+
       trader_mode:
-        friendly_name: "Pref Mode"
+        unique_id: trader_mode
+        friendly_name: "Preferred Mode"
         value_template: >
           {% set negative_buy = is_state('binary_sensor.trader_grid_price_negative', 'on') %}
           {% if is_state('binary_sensor.trader_exporting_criteria_met', 'on') %}
@@ -213,8 +245,9 @@ sensor:
           Maximum Self Consumption
             {% endif %}
           {% endif %}
-#
+
       trader_plan_letter:
+        unique_id: trader_plan_letter
         friendly_name: "Active Plan"
         value_template: >
           {% set price = states('sensor.trader_sell_price')| float %}
@@ -230,8 +263,9 @@ sensor:
             {% endif %}
           {% endfor %}
           {{ ns.pick }}
-#          
+          
       trader_cheapest_buy_price:
+        unique_id: trader_cheapest_buy_price
         friendly_name: "Lowest Active Battery Sell Price"
         unit_of_measurement: cents
         value_template: >
@@ -248,8 +282,9 @@ sensor:
             {% endif %}
           {% endfor %}
           {{ ns.pick }}          
-#
+
       trader_spare_solar:
+        unique_id: trader_spare_solar
         friendly_name: "Current Spare Solar"
         unit_of_measurement: "kW"
         value_template: >
@@ -264,8 +299,9 @@ sensor:
             {% set spare = 0 %}
           {% endif %}
           {{ spare  }}
-#
+
       trader_battery_discharge_rate_chosen_from_plan:
+        unique_id: trader_battery_discharge_rate_chosen_from_plan
         friendly_name: "Export Discharge Rate based on plan"
         unit_of_measurement: "kW"
         value_template: >
@@ -279,12 +315,13 @@ sensor:
           {% else %}
             {% set limit = new_kw | int %}
           {% endif %}
-          {% if limit > states('sensor.max_grid_exports') | float %}
-            {% set limit = states('sensor.max_grid_exports') | float %}
+          {% if limit > states('sensor.my_max_grid_export') | float %}
+            {% set limit = states('sensor.my_max_grid_export') | float %}
           {% endif %}
           {{limit}}
-#
+
       trader_stop_at_soc:
+        unique_id: trader_stop_at_soc
         friendly_name: "Export Discharge SOC based on plan"
         unit_of_measurement: "%"
         value_template: >
@@ -292,6 +329,7 @@ sensor:
           {{ states('input_number.trader_soc_sell_to_' + option_letter) | int(default=0) }}
 
       trader_buy_price:
+        unique_id: trader_buy_price
         friendly_name: "Amber Buy Price"
         unit_of_measurement: cents
         value_template: >
@@ -299,6 +337,7 @@ sensor:
           {{ states(states('sensor.my_amber_buy_price_sensor')) | float(default=0) * mult }}
 
       trader_sell_price:
+        unique_id: trader_sell_price
         friendly_name: "Amber Sell Price"
         unit_of_measurement: cents
         value_template: >
@@ -306,5 +345,4 @@ sensor:
          {{ states(states('sensor.my_amber_sell_price_sensor'))| float(default=0) * mult }}
 
 
-
-
+##############################################################
